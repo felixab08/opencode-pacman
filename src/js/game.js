@@ -110,37 +110,74 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
-function decideGhost( game, g ) {
+// Celda (entera) en la que se encuentra un actor.
+function cellOf( a ) {
+  return { x: Math.round( a.x ), y: Math.round( a.y ) };
+}
+
+function manhattan( a, b ) {
+  return Math.abs( a.x - b.x ) + Math.abs( a.y - b.y );
+}
+
+// Orden de desempate de la SPEC 01: up > left > down > right.
+const DIR_PRIORITY = [ 'up', 'left', 'down', 'right' ];
+
+// Celda a la que quiere llegar el fantasma segun su personalidad (modo chase).
+// La personalidad SOLO define el target; el algoritmo vive en chooseDir.
+function ghostTarget( game, g ) {
+  const p = cellOf( game.pacman );
+  const d = DIRS[ game.pacman.dir ];
+
+  if ( g.kind === 'blinky' ) {
+    // Agresivo: persigue siempre la celda exacta de pacman.
+    return p;
+  }
+  if ( g.kind === 'pinky' ) {
+    // Emboscador: 4 celdas por delante de pacman en su direccion actual.
+    return { x: p.x + d.x * 4, y: p.y + d.y * 4 };
+  }
+  if ( g.kind === 'inky' ) {
+    // Flanqueador: vector duplicado desde blinky a traves del pivot
+    // 2 celdas delante de pacman. blinky es siempre ghosts[0].
+    const b = cellOf( game.ghosts[ 0 ] );
+    const pivot = { x: p.x + d.x * 2, y: p.y + d.y * 2 };
+    return { x: pivot.x + ( pivot.x - b.x ), y: pivot.y + ( pivot.y - b.y ) };
+  }
+  if ( g.kind === 'clyde' ) {
+    // Timido: persigue a distancia; de cerca se retira a su esquina de scatter.
+    if ( manhattan( cellOf( g ), p ) > 8 ) return p;
+    return { x: 0, y: 30 }; // esquina de clyde; pasara a g.home en el paso 3
+  }
+  return p;
+}
+
+// Elige la direccion que minimiza la distancia Manhattan al target.
+// No se permite el giro de 180 salvo callejon sin salida; empates por DIR_PRIORITY.
+function chooseDir( game, g, target ) {
   const grid = game.grid;
-  const p = game.pacman;
 
   const options = Object.keys( DIRS ).filter(
     ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
   );
   // Sin salida (callejon): permitir el giro de 180.
-  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+  const choices = options.length ? options : [ OPPOSITE[ g.dir ] ];
 
-  // Paso 1 de SPEC 01: blinky hereda el comportamiento del antiguo 'hunter'.
-  // pinky, inky y clyde vagan al azar hasta que sus personalidades lleguen en pasos 2-3.
-  if ( g.kind === 'blinky' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
-      }
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of DIR_PRIORITY ) {
+    if ( !choices.includes( dir ) ) continue;
+    const d = DIRS[ dir ];
+    const dist = manhattan( { x: g.x + d.x, y: g.y + d.y }, target );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
+  g.dir = best;
+}
+
+function decideGhost( game, g ) {
+  chooseDir( game, g, ghostTarget( game, g ) );
 }
 
 function moveGhost( game, g ) {
