@@ -13,6 +13,18 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+// SPEC 01: alternancia scatter/chase a 60 fps (pane 1 del arcade).
+const SCATTER_FRAMES = 420; // 7 s dispersos hacia su esquina
+const CHASE_FRAMES = 1200;  // 20 s de caza
+
+// Esquina de scatter de cada fantasma (target inalcanzable a proposito, como el arcade).
+const GHOST_HOMES = {
+  blinky: { x: 25, y: 0 },
+  pinky: { x: 2, y: 0 },
+  inky: { x: 27, y: 30 },
+  clyde: { x: 0, y: 30 },
+};
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -28,6 +40,8 @@ function createGame() {
     score: 0,
     lives: 3,
     dotsRemaining: dots,
+    mode: 'scatter',   // SPEC 01: scatter/chase global
+    modeTimer: 0,      // frames transcurridos en el modo actual
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -42,6 +56,8 @@ function createGame() {
       dir: 'up',
       speed: GHOST_SPEED,
       kind: g.kind,
+      home: GHOST_HOMES[ g.kind ],
+      inPen: true,
     } ) ),
   };
 }
@@ -52,13 +68,15 @@ function aligned( v ) {
 
 // Una celda es muro para el actor dado?
 //   pacman: bloqueado por pared (1) y puerta (3)
-//   ghost:  bloqueado solo por pared (1)
+//   ghost:  bloqueado por pared (1) y, crucial, por la puerta (3) si ya salio:
+//           la puerta es de un solo sentido (salir de la pen, no volver a entrar).
 function isWall( grid, x, y, actor ) {
   if ( y < 0 || y >= grid.length ) return true;
   if ( x < 0 || x >= grid[ 0 ].length ) return true;
   const v = grid[ y ][ x ];
   if ( v === 1 ) return true;
   if ( v === 3 && actor === 'pacman' ) return true;
+  if ( v === 3 && actor !== 'pacman' && !actor.inPen ) return true;
   return false;
 }
 
@@ -122,9 +140,12 @@ function manhattan( a, b ) {
 // Orden de desempate de la SPEC 01: up > left > down > right.
 const DIR_PRIORITY = [ 'up', 'left', 'down', 'right' ];
 
-// Celda a la que quiere llegar el fantasma segun su personalidad (modo chase).
+// Celda a la que quiere llegar el fantasma segun su personalidad.
 // La personalidad SOLO define el target; el algoritmo vive en chooseDir.
+// En scatter TODOS van a su esquina; en chase actua su personalidad.
 function ghostTarget( game, g ) {
+  if ( game.mode === 'scatter' ) return g.home;
+
   const p = cellOf( game.pacman );
   const d = DIRS[ game.pacman.dir ];
 
@@ -146,7 +167,7 @@ function ghostTarget( game, g ) {
   if ( g.kind === 'clyde' ) {
     // Timido: persigue a distancia; de cerca se retira a su esquina de scatter.
     if ( manhattan( cellOf( g ), p ) > 8 ) return p;
-    return { x: 0, y: 30 }; // esquina de clyde; pasara a g.home en el paso 3
+    return g.home;
   }
   return p;
 }
@@ -157,7 +178,7 @@ function chooseDir( game, g, target ) {
   const grid = game.grid;
 
   const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, g )
   );
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ OPPOSITE[ g.dir ] ];
@@ -187,8 +208,10 @@ function moveGhost( game, g ) {
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
+    // SPEC 01: llegar a la fila 11 (pasillo sobre la pen) marca al fantasma como fuera.
+    if ( g.inPen && g.y === 11 ) g.inPen = false;
     decideGhost( game, g );
-    if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
+    if ( !canMove( grid, g.x, g.y, g.dir, g ) ) return;
   }
 
   const d = DIRS[ g.dir ];
@@ -207,6 +230,9 @@ function resetPositions( game ) {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    // SPEC 01: tras el reset, los fantasmas se recolocan dentro de la pen y
+    // la puerta vuelve a ser transitable para salir (criterio anti-camp en paso 6).
+    g.inPen = true;
   } );
 }
 
@@ -214,7 +240,20 @@ function collides( a, b ) {
   return Math.abs( a.x - b.x ) < 0.5 && Math.abs( a.y - b.y ) < 0.5;
 }
 
+// Avanza el temporizador global de scatter/chase y alterna el modo al agotarlo.
+function updateMode( game ) {
+  game.modeTimer++;
+  if ( game.mode === 'scatter' && game.modeTimer >= SCATTER_FRAMES ) {
+    game.mode = 'chase';
+    game.modeTimer = 0;
+  } else if ( game.mode === 'chase' && game.modeTimer >= CHASE_FRAMES ) {
+    game.mode = 'scatter';
+    game.modeTimer = 0;
+  }
+}
+
 function update( game ) {
+  updateMode( game );
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
