@@ -17,6 +17,9 @@ const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 const SCATTER_FRAMES = 420; // 7 s dispersos hacia su esquina
 const CHASE_FRAMES = 1200;  // 20 s de caza
 
+// SPEC 01: salida escalonada de la pen, turno por fantasma segun su indice de arranque.
+const RELEASE_FRAMES = [ 0, 120, 240, 360 ]; // 0 / 2 / 4 / 6 s a 60 fps
+
 // Esquina de scatter de cada fantasma (target inalcanzable a proposito, como el arcade).
 const GHOST_HOMES = {
   blinky: { x: 25, y: 0 },
@@ -50,7 +53,7 @@ function createGame() {
       nextDir: null,
       speed: PACMAN_SPEED,
     },
-    ghosts: GHOST_STARTS.map( ( g ) => ( {
+    ghosts: GHOST_STARTS.map( ( g, i ) => ( {
       x: g.x,
       y: g.y,
       dir: 'up',
@@ -58,6 +61,7 @@ function createGame() {
       kind: g.kind,
       home: GHOST_HOMES[ g.kind ],
       inPen: true,
+      releaseTimer: RELEASE_FRAMES[ i ],
     } ) ),
   };
 }
@@ -205,12 +209,28 @@ function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
 
+  // SPEC 01: cuenta regresiva de salida por turnos; solo corre dentro de la pen.
+  if ( g.inPen && g.releaseTimer > 0 ) g.releaseTimer--;
+
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
     // SPEC 01: llegar a la fila 11 (pasillo sobre la pen) marca al fantasma como fuera.
     if ( g.inPen && g.y === 11 ) g.inPen = false;
-    decideGhost( game, g );
+
+    if ( g.inPen ) {
+      if ( g.releaseTimer > 0 ) {
+        // Espera: oscila verticalmente entre las filas 13 y 15 de su columna.
+        if ( g.y <= 13 ) g.dir = 'down';
+        else if ( g.y >= 15 ) g.dir = 'up';
+      } else {
+        // Turno de salir: avanza a la columna de puerta mas cercana y sube por ella.
+        const doorCol = ( g.x <= 13 ) ? 13 : 14;
+        chooseDir( game, g, { x: doorCol, y: 12 } );
+      }
+    } else {
+      decideGhost( game, g );
+    }
     if ( !canMove( grid, g.x, g.y, g.dir, g ) ) return;
   }
 
