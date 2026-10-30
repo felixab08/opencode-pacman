@@ -240,20 +240,34 @@ function moveGhost( game, g ) {
   wrapTunnel( g, width );
 }
 
+// SPEC 01: vecindad anti-camp en el respawn (celdas Manhattan).
+const SPAWN_CLEAR_DIST = 4;
+
 function resetPositions( game ) {
   const p = game.pacman;
   p.x = PACMAN_START.x;
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+
+  // SPEC 01: los fantasmas NO vuelven a la pen; se quedan donde estaban.
+  // Anti-camp: los que quedan a <= 4 celdas Manhattan del spawn se mandan a la pen
+  // a la espera, con su cuenta regresiva de salida desde cero.
   game.ghosts.forEach( ( g, i ) => {
-    g.x = GHOST_STARTS[ i ].x;
-    g.y = GHOST_STARTS[ i ].y;
-    g.dir = 'up';
-    // SPEC 01: tras el reset, los fantasmas se recolocan dentro de la pen y
-    // la puerta vuelve a ser transitable para salir (criterio anti-camp en paso 6).
-    g.inPen = true;
+    if ( manhattan( cellOf( g ), PACMAN_START ) <= SPAWN_CLEAR_DIST ) {
+      g.x = GHOST_STARTS[ i ].x;
+      g.y = GHOST_STARTS[ i ].y;
+      g.dir = 'up';
+      g.inPen = true;
+      g.releaseTimer = RELEASE_FRAMES[ i ];
+    } else if ( g.inPen ) {
+      g.releaseTimer = RELEASE_FRAMES[ i ];
+    }
   } );
+
+  // El modo vuelve a scatter con su temporizador a cero.
+  game.mode = 'scatter';
+  game.modeTimer = 0;
 }
 
 function collides( a, b ) {
