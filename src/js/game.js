@@ -231,6 +231,18 @@ function chooseDir( game, g, target ) {
   g.dir = best;
 }
 
+// SPEC 02: como chooseDir pero con eleccion uniforme y sin target.
+// Mismas reglas: no se permite el giro de 180 salvo callejon sin salida.
+function chooseDirRandom( game, g ) {
+  const grid = game.grid;
+  const options = Object.keys( DIRS ).filter(
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, g )
+  );
+  // Sin salida (callejon): permitir el giro de 180.
+  const choices = options.length ? options : [ OPPOSITE[ g.dir ] ];
+  g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+}
+
 function decideGhost( game, g ) {
   chooseDir( game, g, ghostTarget( game, g ) );
 }
@@ -258,6 +270,9 @@ function moveGhost( game, g ) {
         const doorCol = ( g.x <= 13 ) ? 13 : 14;
         chooseDir( game, g, { x: doorCol, y: 12 } );
       }
+    } else if ( g.frightened ) {
+      // SPEC 02: en ventada deambula al azar, sin target.
+      chooseDirRandom( game, g );
     } else {
       decideGhost( game, g );
     }
@@ -307,7 +322,10 @@ function collides( a, b ) {
 }
 
 // Avanza el temporizador global de scatter/chase y alterna el modo al agotarlo.
+// SPEC 02: mientras la ventada esta activa el ciclo queda congelado
+// (modeTimer no avanza) y se reanuda donde estaba al terminar.
 function updateMode( game ) {
+  if ( game.frightenedTimer > 0 ) return;
   game.modeTimer++;
   if ( game.mode === 'scatter' && game.modeTimer >= SCATTER_FRAMES ) {
     game.mode = 'chase';
