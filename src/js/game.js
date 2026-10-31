@@ -315,6 +315,11 @@ function resetPositions( game ) {
   // El modo vuelve a scatter con su temporizador a cero.
   game.mode = 'scatter';
   game.modeTimer = 0;
+
+  // SPEC 02: perder vida cancela la ventada frightenada a medias.
+  game.frightenedTimer = 0;
+  game.ghostChain = 0;
+  game.ghosts.forEach( ( g ) => { g.frightened = false; } );
 }
 
 function collides( a, b ) {
