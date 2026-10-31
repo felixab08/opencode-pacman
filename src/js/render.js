@@ -70,10 +70,13 @@ function drawDots( ctx, grid ) {
   ctx.fillStyle = DOT_COLOR;
   for ( let y = 0; y < grid.length; y++ ) {
     for ( let x = 0; x < grid[ 0 ].length; x++ ) {
-      if ( grid[ y ][ x ] !== 2 ) continue;
+      const v = grid[ y ][ x ];
+      if ( v !== 2 && v !== 4 ) continue;
+      // SPEC 02: power pellet (4) = radio 7; dot (2) = radio 2.5.
+      const r = v === 4 ? TILE / 2 - 3 : 2.5;
       const { cx, cy } = cellCenter( x, y );
       ctx.beginPath();
-      ctx.arc( cx, cy, 2.5, 0, Math.PI * 2 );
+      ctx.arc( cx, cy, r, 0, Math.PI * 2 );
       ctx.fill();
     }
   }
@@ -153,6 +156,24 @@ const GHOST_COLORS = {
 };
 const DEFAULT_GHOST_COLOR = '#ff0000';
 
+// SPEC 02: color del fantasma. Frightened = azul; en los ultimos
+// FRIGHT_FLASH_FRAMES de la ventada alterna azul/blanco cada 8 frames
+// (aviso de que la ventada termina). Requiere game.frightenedTimer > 0,
+// de modo que un comido devuelto a la pen tras el fin de ventada no pinta
+// azul ni aunque su flag persistiera.
+const FRIGHT_COLOR = '#2121ff';
+const FRIGHT_FLASH_COLOR = '#ffffff';
+const FLASH_PERIOD = 8;
+
+function ghostColor( game, g, frame ) {
+  if ( g.frightened && game.frightenedTimer > 0 ) {
+    const flash = game.frightenedTimer <= FRIGHT_FLASH_FRAMES &&
+      Math.floor( frame / FLASH_PERIOD ) % 2 === 1;
+    return flash ? FRIGHT_FLASH_COLOR : FRIGHT_COLOR;
+  }
+  return GHOST_COLORS[ g.kind ] || DEFAULT_GHOST_COLOR;
+}
+
 function draw( ctx, game, frame ) {
   const grid = game.grid;
   const W = grid[ 0 ].length;
@@ -165,7 +186,7 @@ function draw( ctx, game, frame ) {
   drawDoor( ctx, grid );
   drawDots( ctx, grid );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g ) => drawGhost( ctx, g, GHOST_COLORS[ g.kind ] || DEFAULT_GHOST_COLOR ) );
+  game.ghosts.forEach( ( g ) => drawGhost( ctx, g, ghostColor( game, g, frame ) ) );
   drawHUD( ctx, game, W );
 }
 

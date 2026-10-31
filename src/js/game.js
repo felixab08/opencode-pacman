@@ -13,6 +13,14 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+// SPEC 02: ventada frightenada a 60 fps.
+const FRIGHT_FRAMES = 360;       // 6 s de ventada
+const FRIGHT_FLASH_FRAMES = 120; // ultimos 2 s: parpadeo azul/blanco
+const GHOST_FRIGHT_SPEED = 0.05; // mitad de GHOST_SPEED (0.1)
+const PELLET_POINTS = 50;        // puntos por power pellet
+// Cadena de puntos por fantasma comido en la misma ventada.
+const GHOST_POINTS = [ 200, 400, 800, 1600 ];
+
 // SPEC 01: alternancia scatter/chase a 60 fps (pane 1 del arcade).
 const SCATTER_FRAMES = 420; // 7 s dispersos hacia su esquina
 const CHASE_FRAMES = 1200;  // 20 s de caza
@@ -36,7 +44,7 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
@@ -45,6 +53,8 @@ function createGame() {
     dotsRemaining: dots,
     mode: 'scatter',   // SPEC 01: scatter/chase global
     modeTimer: 0,      // frames transcurridos en el modo actual
+    frightenedTimer: 0, // SPEC 02: frames restantes de ventada; 0 = apagada
+    ghostChain: 0,      // SPEC 02: fantasmas comidos en la ventada actual
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -62,6 +72,7 @@ function createGame() {
       home: GHOST_HOMES[ g.kind ],
       inPen: true,
       releaseTimer: RELEASE_FRAMES[ i ],
+      frightened: false,
     } ) ),
   };
 }
@@ -102,6 +113,23 @@ function wrapTunnel( a, width ) {
   }
 }
 
+// SPEC 02: activar la ventada frightenada.
+// El timer se reinicia a FRIGHT_FRAMES con cada pellet; la cadena de puntos
+// solo se pone a cero en una activacion nueva (comer otro pellet durante la
+// ventada la extiende sin resetearla). Los fantasmas fuera de la pen pasan a
+// frightened e invierten su direccion 180; los que estan en la pen salen
+// normales despues (segun spec).
+function activateFrightened( game ) {
+  const inicio = game.frightenedTimer === 0;
+  game.frightenedTimer = FRIGHT_FRAMES;
+  if ( inicio ) game.ghostChain = 0;
+  game.ghosts.forEach( ( g ) => {
+    if ( g.inPen ) return;
+    g.frightened = true;
+    g.dir = OPPOSITE[ g.dir ]; // reversa 180
+  } );
+}
+
 function movePacman( game ) {
   const p = game.pacman;
   const grid = game.grid;
@@ -116,11 +144,13 @@ function movePacman( game ) {
       p.dir = p.nextDir;
       p.nextDir = null;
     }
-    // Comer dot.
-    if ( grid[ p.y ][ p.x ] === 2 ) {
+    // Comer dot (2) o power pellet (4) — SPEC 02.
+    const v = grid[ p.y ][ p.x ];
+    if ( v === 2 || v === 4 ) {
       grid[ p.y ][ p.x ] = 0;
-      game.score += 10;
+      game.score += ( v === 4 ) ? PELLET_POINTS : 10;
       game.dotsRemaining--;
+      if ( v === 4 ) activateFrightened( game );
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -201,6 +231,18 @@ function chooseDir( game, g, target ) {
   g.dir = best;
 }
 
+// SPEC 02: como chooseDir pero con eleccion uniforme y sin target.
+// Mismas reglas: no se permite el giro de 180 salvo callejon sin salida.
+function chooseDirRandom( game, g ) {
+  const grid = game.grid;
+  const options = Object.keys( DIRS ).filter(
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, g )
+  );
+  // Sin salida (callejon): permitir el giro de 180.
+  const choices = options.length ? options : [ OPPOSITE[ g.dir ] ];
+  g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+}
+
 function decideGhost( game, g ) {
   chooseDir( game, g, ghostTarget( game, g ) );
 }
@@ -228,6 +270,9 @@ function moveGhost( game, g ) {
         const doorCol = ( g.x <= 13 ) ? 13 : 14;
         chooseDir( game, g, { x: doorCol, y: 12 } );
       }
+    } else if ( g.frightened ) {
+      // SPEC 02: en ventada deambula al azar, sin target.
+      chooseDirRandom( game, g );
     } else {
       decideGhost( game, g );
     }
@@ -235,8 +280,10 @@ function moveGhost( game, g ) {
   }
 
   const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
+  // SPEC 02: los frightened van a la mitad de velocidad.
+  const speed = g.frightened ? GHOST_FRIGHT_SPEED : g.speed;
+  g.x += d.x * speed;
+  g.y += d.y * speed;
   wrapTunnel( g, width );
 }
 
@@ -268,6 +315,11 @@ function resetPositions( game ) {
   // El modo vuelve a scatter con su temporizador a cero.
   game.mode = 'scatter';
   game.modeTimer = 0;
+
+  // SPEC 02: perder vida cancela la ventada frightenada a medias.
+  game.frightenedTimer = 0;
+  game.ghostChain = 0;
+  game.ghosts.forEach( ( g ) => { g.frightened = false; } );
 }
 
 function collides( a, b ) {
@@ -275,7 +327,10 @@ function collides( a, b ) {
 }
 
 // Avanza el temporizador global de scatter/chase y alterna el modo al agotarlo.
+// SPEC 02: mientras la ventada esta activa el ciclo queda congelado
+// (modeTimer no avanza) y se reanuda donde estaba al terminar.
 function updateMode( game ) {
+  if ( game.frightenedTimer > 0 ) return;
   game.modeTimer++;
   if ( game.mode === 'scatter' && game.modeTimer >= SCATTER_FRAMES ) {
     game.mode = 'chase';
@@ -291,8 +346,32 @@ function update( game ) {
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
+  // SPEC 02: cuenta regresiva de la ventada; al agotarse, todos vuelven a normal.
+  if ( game.frightenedTimer > 0 ) {
+    game.frightenedTimer--;
+    if ( game.frightenedTimer === 0 ) {
+      game.ghosts.forEach( ( g ) => { g.frightened = false; } );
+    }
+  }
+
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      if ( g.frightened ) {
+        // SPEC 02: comerselo. Puntos por cadena (200/400/800/1600) y teleport
+        // a su celda de arranque dentro de la pen; sale mas tarde segun su
+        // RELEASE_FRAMES y de color normal. El bucle no se corta: en el mismo
+        // frame pueden chocar dos fantasmas y comerse los dos.
+        game.score += GHOST_POINTS[ game.ghostChain ];
+        game.ghostChain++;
+        const i = game.ghosts.indexOf( g );
+        g.x = GHOST_STARTS[ i ].x;
+        g.y = GHOST_STARTS[ i ].y;
+        g.dir = 'up';
+        g.inPen = true;
+        g.releaseTimer = RELEASE_FRAMES[ i ];
+        g.frightened = false;
+        continue;
+      }
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
