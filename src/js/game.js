@@ -351,6 +351,22 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      if ( g.frightened ) {
+        // SPEC 02: comerselo. Puntos por cadena (200/400/800/1600) y teleport
+        // a su celda de arranque dentro de la pen; sale mas tarde segun su
+        // RELEASE_FRAMES y de color normal. El bucle no se corta: en el mismo
+        // frame pueden chocar dos fantasmas y comerse los dos.
+        game.score += GHOST_POINTS[ game.ghostChain ];
+        game.ghostChain++;
+        const i = game.ghosts.indexOf( g );
+        g.x = GHOST_STARTS[ i ].x;
+        g.y = GHOST_STARTS[ i ].y;
+        g.dir = 'up';
+        g.inPen = true;
+        g.releaseTimer = RELEASE_FRAMES[ i ];
+        g.frightened = false;
+        continue;
+      }
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
