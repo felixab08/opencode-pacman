@@ -1,6 +1,6 @@
 # SPEC 01 — Cuatro fantasmas clásicos con modos scatter/chase
 
-> **Estado:** aprovado
+> **Estado:** implementado
 > **Depende de:** ninguna
 > **Fecha:** 2026-10-30
 > **Objetivo:** Reemplazar los 2 fantasmas actuales por los 4 clásicos (Blinky agresivo, Pinky emboscador, Inky flanqueador y Clyde tímido) con alternancia temporizada scatter/chase, salida escalonada de la pen, puerta de un solo sentido y 4 colores propios.

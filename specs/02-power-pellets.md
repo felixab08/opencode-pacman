@@ -1,6 +1,6 @@
 # SPEC 02 — Power pellets con modo frightenado
 
-> **Estado:** Aprovado
+> **Estado:** Implementado
 > **Depende de:** SPEC 01
 > **Fecha:** 2026-10-31
 > **Objetivo:** Añadir los 4 power pellets clásicos en las esquinas del maze que, además de 50 puntos, activan 6 s de modo frightenado: fantasmas azules, reversa inicial, velocidad reducida, dirección aleatoria, cadenas 200/400/800/1600 y regreso a la pen.
